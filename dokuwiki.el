@@ -119,7 +119,6 @@ when saving."
 (defvar dokuwiki--has-successfully-logged-in nil
   "A variable that is set to true once successfully logged in to a wiki.")
 
-;;;###autoload
 (defun dokuwiki-login ()
   "Connects to the dokuwiki."
   (interactive)
@@ -132,7 +131,6 @@ when saving."
       (message "Login successful!")
       (setq dokuwiki--has-successfully-logged-in t)
       (dokuwiki-pages-get-list-cache t)
-      (dokuwiki-list-pages-cached)
       (if dokuwiki-use-dokuwiki-mode
           (if (featurep 'dokuwiki-mode)
               (add-hook #'dokuwiki-page-opened-hook #'dokuwiki-mode)
@@ -421,15 +419,15 @@ NB text is :a:b not /a/b but same file pattern rules apply."
        append))
   "Make a link clickable.")
 
-
-;;; convient vairalbe setter
-
-(defun dokuwiki-launch (url user)
-  "Login to dokuwiki using URL and USER.  Open a page.
-Set NO-LAUNCH for no page jump."
-  (setq dokuwiki-xml-rpc-url url
-        dokuwiki-login-user-name user)
-  (dokuwiki-login))
+;;;###autoload
+(defun dokuwiki-launch ()
+  "Simple entry point for dokuwiki."
+  (interactive)
+  (if dokuwiki--has-successfully-logged-in
+      (dokuwiki-list-pages-cached)
+      (progn
+        (dokuwiki-login)
+        (dokuwiki-list-pages-cached))))
 
 (defun dokuwiki-in-browser ()
   "Open current page in the borwser.  Assumes fixed xmlrpc url suffixe."
