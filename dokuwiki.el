@@ -126,7 +126,7 @@ when saving."
          (credentials (dokuwiki--credentials))
          (login-user-name (plist-get credentials :user))
          (login-password (plist-get credentials :password)))
-    (if (not (xml-rpc-method-call xml-rpc-url 'dokuwiki.login login-user-name login-password))
+    (if (not (dokuwiki--xmlrpc-login login-user-name login-password))
         (error "Login unsuccessful! Check if your dokuwiki-xml-rpc-url or login credentials are correct!")
       (message "Login successful!")
       (setq dokuwiki--has-successfully-logged-in t)
@@ -157,7 +157,7 @@ buffer is saved."
   (if (not dokuwiki--has-successfully-logged-in)
       (user-error "Login first before opening a page")
     (let* ((page-name (car (last (split-string page-name-or-url "/"))))
-	   (page-content (xml-rpc-method-call dokuwiki-xml-rpc-url 'wiki.getPage page-name)))
+	   (page-content (dokuwiki--xmlrpc-call 'wiki.getPage page-name)))
       (message "Page name is \"%s\"" page-name)
       (if (not page-content)
 	  (message "Page not found in wiki. Creating a new buffer with page name \"%s\"" page-name)
@@ -217,7 +217,7 @@ is saved as \"wikiurl.com/wiki-page\".  On the other hand, a buffer of
 	    (message "Cancelled saving of the page."))
 	(let* ((summary (read-string "Summary: "))
 	       (minor (y-or-n-p "Is this a minor change? "))
-	       (save-success (xml-rpc-method-call dokuwiki-xml-rpc-url 'wiki.putPage page-name (buffer-string) `(("sum" . ,summary) ("minor" . ,minor)))))
+	       (save-success (dokuwiki--xmlrpc-call 'wiki.putPage page-name (buffer-string) `(("sum" . ,summary) ("minor" . ,minor)))))
 	  (if save-success
 	      (message "Saving successful with summary %s and minor of %s." summary minor)
 	    (error "Saving unsuccessful!")))))))
@@ -227,14 +227,14 @@ is saved as \"wikiurl.com/wiki-page\".  On the other hand, a buffer of
   (interactive)
   (if (not dokuwiki--has-successfully-logged-in)
       (user-error "Login first before getting the wiki title")
-    (let ((dokuwiki-title (xml-rpc-method-call dokuwiki-xml-rpc-url 'dokuwiki.getTitle)))
+    (let ((dokuwiki-title (dokuwiki--xmlrpc-call 'dokuwiki.getTitle)))
       (message "The title of the wiki is \"%s\"" dokuwiki-title))))
 
 (defun dokuwiki-get-page-list ()
   "Extract 'id' from page info."
   (if (not dokuwiki--has-successfully-logged-in)
       (user-error "Login first before listing the pages")
-    (let ((page-detail-list (xml-rpc-method-call dokuwiki-xml-rpc-url 'wiki.getAllPages))
+    (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
 	  (page-list ()))
       (progn
         (dolist (page-detail page-detail-list)
@@ -253,6 +253,40 @@ is saved as \"wikiurl.com/wiki-page\".  On the other hand, a buffer of
   (insert (concat "[[" (completing-read "Select a page to link: " (dokuwiki-get-page-list)) "]]")))
 
 ;; Helpers
+(defun dokuwiki--xmlrpc-login (username password)
+  "Login to the Dokuwiki XML-RPC API.
+USERNAME is the username to use for logging in.
+PASSWORD is the password to use for logging in.
+Returns the result of the XML-RPC call, or nil if the login failed."
+  (xml-rpc-method-call dokuwiki-xml-rpc-url
+                       'dokuwiki.login
+                       username
+                       password))
+
+(defun dokuwiki--xmlrpc-call (method &rest params)
+  "Call XML-RPC method with optional authentication disabling.
+
+METHOD is the XML-RPC method to call (e.g. 'wiki.getPage).
+PARAMS are the optional parameters to pass to the method as multiple arguments.
+
+Returns the result of xml-rpc-method-call."
+  (let ((call-func (lambda ()
+                    (apply #'xml-rpc-method-call (cons dokuwiki-xml-rpc-url (cons method params))))))
+    ;; nullify 'url-get-authentication' to avoid authentication prompts
+    (cl-letf (((symbol-function 'url-get-authentication)
+               (lambda (&rest _args) nil)))
+             (condition-case err
+                             ;; First try
+                             (funcall call-func)
+                             (error
+                               (if (string-match "401\\|Unauthorized" (error-message-string err))
+                                 (progn
+                                   (message "Authentication required. Please log in.")
+                                   (setq dokuwiki--has-successfully-logged-in nil)
+                                   (dokuwiki-login)
+                                   ;; Retry the call after trying to log in
+                                   (funcall call-func))
+                                 (signal (car err) (cdr err))))))))
 
 (defun dokuwiki--create-preferred-mode-maps ()
   "Create keymaps for editing a page with a particular mode by
@@ -328,7 +362,7 @@ returns t, enable the major mode specified by that entry."
 (when (or (not dokuwiki-cached-page-list) refresh)
   (if (not dokuwiki--has-successfully-logged-in)
       (user-error "Login first before listing the pages")
-    (let ((page-detail-list (xml-rpc-method-call dokuwiki-xml-rpc-url 'wiki.getAllPages))
+    (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
           (page-list ()))
       (dolist (page-detail page-detail-list)
         (push (concat ":" (cdr (assoc "id" page-detail))) page-list))
