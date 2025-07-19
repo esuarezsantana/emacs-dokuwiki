@@ -5,6 +5,7 @@
 ;;   2021 vincowl
 ;;   2018, 2023 WillForan
 ;;   2023-2024 Alexis <flexibeast@gmail.com>
+;;   2025 esuarezsantana
 
 ;; Author: Juan Karlo Licudine <accidentalrebel@gmail.com>
 ;; URL: http://www.github.com/accidentalrebel/emacs-dokuwiki
@@ -308,11 +309,9 @@ returns t, enable the major mode specified by that entry."
 
 (defun dokuwiki--get-xml-rpc-url ()
   "Gets the xml-rpc to be used for logging in."
-  (if (not (string= dokuwiki-xml-rpc-url ""))
-      dokuwiki-xml-rpc-url
-    (let ((xml-rpc-url (read-string "Enter wiki URL: ")))
-      (message "The entered wiki url is \"%s\"." xml-rpc-url)
-      xml-rpc-url)))
+  (if (string= dokuwiki-xml-rpc-url "")
+    (error "Please set the 'dokuwiki-xml-rpc-url' variable before proceeding.")
+      dokuwiki-xml-rpc-url))
 
 (defun dokuwiki--get-login-user-name ()
   "Gets the login user name to be used for logging in."
