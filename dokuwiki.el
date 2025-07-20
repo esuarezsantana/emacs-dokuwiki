@@ -127,14 +127,14 @@ when saving."
          (login-user-name (plist-get credentials :user))
          (login-password (plist-get credentials :password)))
     (if (not (dokuwiki--xmlrpc-login login-user-name login-password))
-        (error "Login unsuccessful! Check if your dokuwiki-xml-rpc-url or login credentials are correct!")
+      (error "Login unsuccessful! Check if your dokuwiki-xml-rpc-url or login credentials are correct!")
       (message "Login successful!")
       (setq dokuwiki--has-successfully-logged-in t)
       (dokuwiki-pages-get-list-cache)
       (if dokuwiki-use-dokuwiki-mode
-          (if (featurep 'dokuwiki-mode)
-              (add-hook #'dokuwiki-page-opened-hook #'dokuwiki-mode)
-            (user-error "Dokuwiki-mode not installed: can't enable dokuwiki-mode"))))))
+        (if (featurep 'dokuwiki-mode)
+          (add-hook #'dokuwiki-page-opened-hook #'dokuwiki-mode)
+          (user-error "Dokuwiki-mode not installed: can't enable dokuwiki-mode"))))))
 
 (defun dokuwiki--insert-top-heading (page-name)
   "When there's no content, we want a top level heading matching PAGE-NAME."
@@ -175,29 +175,28 @@ buffer is saved."
 
 (defun dokuwiki-save ()
   "Wrapper for `dokuwiki-save-page', saving local copy of page if
-`dokuwiki-save-local-copy' is set to t."
+  `dokuwiki-save-local-copy' is set to t."
   (interactive)
   (if (not dokuwiki-save-local-copy)
-      (dokuwiki-save-page)
+    (dokuwiki-save-page)
     (let* ((mode major-mode)
-           (bfr-name (buffer-name))
-           (_ (string-match "^\\(.+\\):\\(.+\\)\\.dwiki$" bfr-name))
-           (page-name (match-string 2 bfr-name))
-           (namespace (split-string (match-string 1 bfr-name) ":"))
+           (conspath (dokuwiki-path))
+           (namespace (car conspath))
+           (page-name (cdr conspath))
            (dir (apply
-                 #'file-name-concat
-                 dokuwiki-local-directory
-                 namespace))
+                  #'file-name-concat
+                  dokuwiki-local-directory
+                  namespace))
            (ext (or (let (value)
                       (dolist (entry dokuwiki-preferred-mode-alist)
                         (if (eq (car entry) mode)
-                            (setq value (cadadr entry))))
+                          (setq value (cadadr entry))))
                       value)
                     "dwiki"))
            (file (concat page-name "." ext)))
       (make-directory dir t) ; Create parent dir(s) if necessary.
       (write-file (file-name-concat dir file))
-      (set-visited-file-name bfr-name)
+      (set-visited-file-name (buffer-name))
       (funcall mode)
       (dokuwiki-save-page))))
 
@@ -246,6 +245,13 @@ is saved as \"wikiurl.com/wiki-page\".  On the other hand, a buffer of
   (interactive)
   (dokuwiki-open-page (completing-read "Select a page to open: " (dokuwiki-get-page-list))))
 
+(defun dokuwiki-path ()
+  "Get the path of the current page."
+  (let* ((bfr-name (buffer-name))
+         (_ (string-match "^\\(.+\\):\\(.+\\)\\.dwiki$" bfr-name))
+         (namespace (match-string 1 bfr-name))
+         (page-name (match-string 2 bfr-name)))
+    (cons namespace page-name)))
 
 (defun dokuwiki-insert-link-from-list ()
   "Insert link from wiki page list.  Not cached."
@@ -357,17 +363,20 @@ returns t, enable the major mode specified by that entry."
 (defvar dokuwiki-cached-page-list nil
   "List of all pages cached for quick linking and listing.")
 
-(defun dokuwiki-pages-get-list-cache ( &optional refresh)
+(defun dokuwiki-pages-get-list-cache (&optional refresh)
   "Get list of page; if cache is unset or REFRESH, fetch."
-(when (or (not dokuwiki-cached-page-list) refresh)
-  (if (not dokuwiki--has-successfully-logged-in)
+  (when (or (not dokuwiki-cached-page-list) refresh)
+    (if (not dokuwiki--has-successfully-logged-in)
       (user-error "Login first before listing the pages")
-    (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
-          (page-list ()))
-      (dolist (page-detail page-detail-list)
-        (push (concat ":" (cdr (assoc "id" page-detail))) page-list))
-      (setq dokuwiki-cached-page-list page-list))))
-dokuwiki-cached-page-list)
+      (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
+            (page-list ()))
+        (dolist (page-detail page-detail-list)
+          (push (concat ":" (cdr (assoc "id" page-detail))) page-list))
+        (setq dokuwiki-cached-page-list page-list)
+        ;; let user know cache is updated
+        (message "Cached page list updated.")
+        (sit-for 1))))
+  dokuwiki-cached-page-list)
 
 (defun dokuwiki-insert-link-from-cache ()
   "Show a selectable list containing pages from the current wiki.
@@ -424,6 +433,31 @@ Wrap as link when finished."
           dokuwiki-cached-page-list
           :exit-function #'dokuwiki--capf-link-wrap)))
 
+(defun dokuwiki--full-path (any-path)
+  "Return full path for dokuwiki PATH."
+  ;; - if the path starts with ':' then:
+  ;;   - if the path starts with '::', then strip one colon and return the rest
+  ;;   - otherwise return the path as is
+  ;; - else if the path has any other ':' then:
+  ;;   - if the path starts with a [a-z0-9], then return the path as is
+  ;;   - if the path starts with a '.:', then strip that prefix and append the rest to the namespace
+  ;;   - otherwise print an error
+  ;; - else append the path to the current namespace
+  (if (string-prefix-p ":" any-path)
+    (if (string-prefix-p "::" any-path)
+      (substring any-path 1)
+      any-path)
+    (let ((namespace (car (dokuwiki-path))))
+      (if (string-match ":" any-path)
+        (cond
+          ((string-match "^\\.:\\(.*\\)" any-path)
+           (concat namespace ":" (match-string 1 any-path)))
+          ((string-match "^[a-z0-9]" any-path)
+           any-path)
+          (t
+            (error "Invalid path: %s" any-path)))
+        (concat namespace ":" any-path)))))
+
 ;;; links
 (defun dokuwiki--fwpap (&optional at-point)
   "Find wiki path around point using 'find file around point'.
@@ -436,7 +470,8 @@ NB text is :a:b not /a/b but same file pattern rules apply."
     (skip-chars-forward "[")
     (skip-chars-backward "]")
     ;; requires ffap
-    (ffap-string-at-point 'file)))
+    (dokuwiki--full-path
+     (ffap-string-at-point 'file))))
 
 (defun dokuwiki-ffap ()
   "Open wiki path under cursor."
