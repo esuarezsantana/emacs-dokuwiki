@@ -116,9 +116,7 @@ when saving."
   :group 'dokuwiki
   :type 'boolean)
 
-(defvar dokuwiki--has-successfully-logged-in nil
-  "A variable that is set to true once successfully logged in to a wiki.")
-
+;;;###autoload
 (defun dokuwiki-login ()
   "Connects to the dokuwiki."
   (interactive)
@@ -129,8 +127,6 @@ when saving."
     (if (not (dokuwiki--xmlrpc-login login-user-name login-password))
       (error "Login unsuccessful! Check if your dokuwiki-xml-rpc-url or login credentials are correct!")
       (message "Login successful!")
-      (setq dokuwiki--has-successfully-logged-in t)
-      (dokuwiki-pages-get-list-cache)
       (if dokuwiki-use-dokuwiki-mode
         (if (featurep 'dokuwiki-mode)
           (add-hook #'dokuwiki-page-opened-hook #'dokuwiki-mode)
@@ -154,24 +150,22 @@ the page-name.  For example, \"namespace:wiki-page\" to open the
 If the specified page does not exist, it creates a new page once the
 buffer is saved."
   (interactive "sEnter page name: ")
-  (if (not dokuwiki--has-successfully-logged-in)
-      (user-error "Login first before opening a page")
-    (let* ((page-name (car (last (split-string page-name-or-url "/"))))
-     (page-content (dokuwiki--xmlrpc-call 'wiki.getPage page-name)))
-      (message "Page name is \"%s\"" page-name)
-      (if (not page-content)
-    (message "Page not found in wiki. Creating a new buffer with page name \"%s\"" page-name)
-  (message "Page exists. Creating buffer for existing page \"%s\"" page-name))
-      (get-buffer-create (concat page-name ".dwiki"))
-      (switch-to-buffer (concat page-name ".dwiki"))
-      (erase-buffer)
-      (if page-content (insert page-content) (dokuwiki--insert-top-heading page-name))
-      (goto-char (point-min))
-      (if dokuwiki-use-preferred-modes
-          (progn
-            (dokuwiki--create-preferred-mode-maps)
-            (dokuwiki--enable-preferred-mode)))
-      (run-hooks #'dokuwiki-page-opened-hook))))
+  (let* ((page-name (car (last (split-string page-name-or-url "/"))))
+         (page-content (dokuwiki--xmlrpc-call 'wiki.getPage page-name)))
+    (message "Page name is \"%s\"" page-name)
+    (if (not page-content)
+      (message "Page not found in wiki. Creating a new buffer with page name \"%s\"" page-name)
+      (message "Page exists. Creating buffer for existing page \"%s\"" page-name))
+    (get-buffer-create (concat page-name ".dwiki"))
+    (switch-to-buffer (concat page-name ".dwiki"))
+    (erase-buffer)
+    (if page-content (insert page-content) (dokuwiki--insert-top-heading page-name))
+    (goto-char (point-min))
+    (if dokuwiki-use-preferred-modes
+      (progn
+        (dokuwiki--create-preferred-mode-maps)
+        (dokuwiki--enable-preferred-mode)))
+    (run-hooks #'dokuwiki-page-opened-hook)))
 
 (defun dokuwiki-save ()
   "Wrapper for `dokuwiki-save-page', saving local copy of page if
@@ -207,38 +201,32 @@ Uses the buffer name as the page name.  A buffer of \"wiki-page.dwiki\"
 is saved as \"wikiurl.com/wiki-page\".  On the other hand, a buffer of
 \"namespace:wiki-page.dwiki\" is saved as \"wikiurl.com/namespace:wiki-page\""
   (interactive)
-  (if (not dokuwiki--has-successfully-logged-in)
-      (user-error "Login first before saving a page")
-    (if (not (string-match-p ".dwiki" (buffer-name)))
-  (error "The current buffer is not a .dwiki buffer")
-      (let ((page-name (replace-regexp-in-string ".dwiki" "" (buffer-name))))
-  (if (not (y-or-n-p (concat "Do you want to save the page \"" page-name "\"?")))
-      (message "Cancelled saving of the page."))
-  (let* ((summary (read-string "Summary: "))
-         (minor (y-or-n-p "Is this a minor change? "))
-         (save-success (dokuwiki--xmlrpc-call 'wiki.putPage page-name (buffer-string) `(("sum" . ,summary) ("minor" . ,minor)))))
-    (if save-success
-        (message "Saving successful with summary %s and minor of %s." summary minor)
-      (error "Saving unsuccessful!")))))))
+  (if (not (string-match-p ".dwiki" (buffer-name)))
+    (error "The current buffer is not a .dwiki buffer")
+    (let ((page-name (replace-regexp-in-string ".dwiki" "" (buffer-name))))
+      (if (not (y-or-n-p (concat "Do you want to save the page \"" page-name "\"?")))
+        (message "Cancelled saving of the page."))
+      (let* ((summary (read-string "Summary: "))
+             (minor (y-or-n-p "Is this a minor change? "))
+             (save-success (dokuwiki--xmlrpc-call 'wiki.putPage page-name (buffer-string) `(("sum" . ,summary) ("minor" . ,minor)))))
+        (if save-success
+          (message "Saving successful with summary %s and minor of %s." summary minor)
+          (error "Saving unsuccessful!"))))))
 
 (defun dokuwiki-get-wiki-title ()
   "Gets the title of the current wiki."
   (interactive)
-  (if (not dokuwiki--has-successfully-logged-in)
-      (user-error "Login first before getting the wiki title")
-    (let ((dokuwiki-title (dokuwiki--xmlrpc-call 'dokuwiki.getTitle)))
-      (message "The title of the wiki is \"%s\"" dokuwiki-title))))
+  (let ((dokuwiki-title (dokuwiki--xmlrpc-call 'dokuwiki.getTitle)))
+    (message "The title of the wiki is \"%s\"" dokuwiki-title)))
 
 (defun dokuwiki-get-page-list ()
   "Extract 'id' from page info."
-  (if (not dokuwiki--has-successfully-logged-in)
-      (user-error "Login first before listing the pages")
-    (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
-    (page-list ()))
-      (progn
-        (dolist (page-detail page-detail-list)
-          (push (cdr (assoc "id" page-detail)) page-list))
-        page-list))))
+  (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
+        (page-list ()))
+    (progn
+      (dolist (page-detail page-detail-list)
+        (push (cdr (assoc "id" page-detail)) page-list))
+      page-list)))
 
 (defun dokuwiki-list-pages ()
   "Show a selectable list containing pages from the current wiki.  Not cached."
@@ -287,8 +275,7 @@ Returns the result of xml-rpc-method-call."
                              (error
                                (if (string-match "401\\|Unauthorized" (error-message-string err))
                                  (progn
-                                   (message "Authentication required. Please log in.")
-                                   (setq dokuwiki--has-successfully-logged-in nil)
+                                   (message "Authentication required. Logging in...")
                                    (dokuwiki-login)
                                    ;; Retry the call after trying to log in
                                    (funcall call-func))
@@ -363,19 +350,18 @@ returns t, enable the major mode specified by that entry."
 (defvar dokuwiki-cached-page-list nil
   "List of all pages cached for quick linking and listing.")
 
+;;;###autoload
 (defun dokuwiki-pages-get-list-cache (&optional refresh)
   "Get list of page; if cache is unset or REFRESH, fetch."
   (when (or (not dokuwiki-cached-page-list) refresh)
-    (if (not dokuwiki--has-successfully-logged-in)
-      (user-error "Login first before listing the pages")
-      (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
-            (page-list ()))
-        (dolist (page-detail page-detail-list)
-          (push (concat ":" (cdr (assoc "id" page-detail))) page-list))
-        (setq dokuwiki-cached-page-list page-list)
-        ;; let user know cache is updated
-        (message "Cached page list updated.")
-        (sit-for 1))))
+    (let ((page-detail-list (dokuwiki--xmlrpc-call 'wiki.getAllPages))
+          (page-list ()))
+      (dolist (page-detail page-detail-list)
+        (push (concat ":" (cdr (assoc "id" page-detail))) page-list))
+      (setq dokuwiki-cached-page-list page-list)
+      ;; let user know cache is updated
+      (message "Cached page list updated.")
+      (sit-for 1)))
   dokuwiki-cached-page-list)
 
 (defun dokuwiki-insert-link-from-cache ()
@@ -390,7 +376,6 @@ Refresh when univesal arg."
 Refresh when univerasl arg."
   (interactive)
   (dokuwiki-open-page (completing-read "Select a page to open: " (dokuwiki-pages-get-list-cache current-prefix-arg))))
-
 
 ;;; completion
 ;; add completion canidates based on cached page names
@@ -489,14 +474,11 @@ NB text is :a:b not /a/b but same file pattern rules apply."
   "Make a link clickable.")
 
 ;;;###autoload
-(defun dokuwiki-launch ()
+(defun dokuwiki-launch (&optional refresh)
   "Simple entry point for dokuwiki."
   (interactive)
-  (if dokuwiki--has-successfully-logged-in
-      (dokuwiki-list-pages-cached)
-      (progn
-        (dokuwiki-login)
-        (dokuwiki-list-pages-cached))))
+  (dokuwiki-pages-get-list-cache refresh)
+  (dokuwiki-list-pages-cached))
 
 (defun dokuwiki-in-browser ()
   "Open current page in the borwser.  Assumes fixed xmlrpc url suffixe."
