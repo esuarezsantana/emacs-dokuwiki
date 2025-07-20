@@ -130,7 +130,7 @@ when saving."
         (error "Login unsuccessful! Check if your dokuwiki-xml-rpc-url or login credentials are correct!")
       (message "Login successful!")
       (setq dokuwiki--has-successfully-logged-in t)
-      (dokuwiki-pages-get-list-cache t)
+      (dokuwiki-pages-get-list-cache)
       (if dokuwiki-use-dokuwiki-mode
           (if (featurep 'dokuwiki-mode)
               (add-hook #'dokuwiki-page-opened-hook #'dokuwiki-mode)
