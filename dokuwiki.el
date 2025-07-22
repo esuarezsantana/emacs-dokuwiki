@@ -371,11 +371,11 @@ Refresh when univesal arg."
   (if-let (page (completing-read "Select a page to link: " (dokuwiki-pages-get-list-cache current-prefix-arg)))
       (insert (concat "[[:" page "]] "))))
 
-(defun dokuwiki-list-pages-cached ()
+(defun dokuwiki-list-pages-cached (arg)
   "Show a selectable list containing pages from the current wiki.
-Refresh when univerasl arg."
-  (interactive)
-  (dokuwiki-open-page (completing-read "Select a page to open: " (dokuwiki-pages-get-list-cache current-prefix-arg))))
+Refresh when universal arg."
+  (interactive "P")
+  (dokuwiki-open-page (completing-read "Select a page to open: " (dokuwiki-pages-get-list-cache arg))))
 
 ;;; completion
 ;; add completion canidates based on cached page names
@@ -473,12 +473,12 @@ NB text is :a:b not /a/b but same file pattern rules apply."
        append))
   "Make a link clickable.")
 
+;; This is an alias for 'dokuwiki-list-pages-cached'
 ;;;###autoload
-(defun dokuwiki-launch (&optional refresh)
+(defun dokuwiki-launch ()
   "Simple entry point for dokuwiki."
   (interactive)
-  (dokuwiki-pages-get-list-cache refresh)
-  (dokuwiki-list-pages-cached))
+  (dokuwiki-list-pages-cached current-prefix-arg))
 
 (defun dokuwiki-in-browser ()
   "Open current page in the borwser.  Assumes fixed xmlrpc url suffixe."
