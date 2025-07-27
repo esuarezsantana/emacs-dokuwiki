@@ -138,6 +138,7 @@ when saving."
        (get-buffer (concat page-name ".dwiki")))
        (insert "====== " (replace-regexp-in-string ".*:" "" page-name ) " ======"))
 
+;;;###autoload
 (defun dokuwiki-open-page (page-name-or-url)
   "Opens a page from the wiki.
 
